@@ -48,4 +48,82 @@ bind_rows(predTrainBag, predTrainRF) %>%
 
 #Support Vector Machines
 #Logistic Regression
-#
+
+#Support Vector Machines
+#1 : Polynomial
+library(e1071)
+set.seed(1)
+numerical_2016 <- data_2016[,c(-1,-2)]
+numerical_2020 <- data_2020[,c(-1,-2)]
+tune.out.poly <- tune(svm, as.factor(Outcome) ~ ., data = numerical_2016, 
+                 kernel = "polynomial",
+                 na.rm = TRUE,
+                 ranges = list(
+                   cost = c(0.1, 1, 10, 100, 1000),
+                   degree = c(0.1, 0.5, 1, 2, 3, 4, 5)
+                 )
+)
+pred.poly = predict(tune.out.poly$best.model, newdata = numerical_2016)
+table(pred.poly, numerical_2016$Outcome)
+misclassification_error_train_poly <- mean(pred.poly != numerical_2016$Outcome)
+print(paste("Misclassification Error:", misclassification_error_train_poly))
+#Misclassification Error: 0.0328502415458937
+#Best Model:
+# cost: 10
+# degree: 2
+poly.svm <- svm(as.factor(Outcome) ~., data = numerical_2016, cost=10, degree=2, probability = TRUE)
+poly.svm.prob <- predict(poly.svm, type="prob", newdata = numerical_2020, probability = TRUE)
+
+library(ROCR)
+poly.svm.prob.rocr <- prediction(attr(poly.svm.prob, "probabilities")[,1], numerical_2020$Outcome)
+poly.svm.perf <- performance(poly.svm.prob.rocr, "tpr","fpr")
+
+#2: Radial
+tune.out.radial <- tune(svm, as.factor(Outcome) ~ ., data = numerical_2016, 
+                 kernel = "radial",
+                 na.rm = TRUE,
+                 ranges = list(
+                   cost = c(0.1, 1, 10, 100, 1000),
+                   gamma = c(0.25, 0.5, 2, 3)
+                 )
+)
+pred.radial = predict(tune.out.radial$best.model, newdata = numerical_2016)
+table(pred.radial, numerical_2016$Outcome)
+misclassification_error_train_radial <- mean(pred.radial != numerical_2016$Outcome)
+print(paste("Misclassification Error:", misclassification_error_train_radial))
+#Misclassification Error: 0
+#cost: 10
+#gamma: 0.25
+
+radial.svm <- svm(as.factor(Outcome) ~., data = numerical_2016, cost=10, gamma=0.25, probability = TRUE)
+radial.svm.prob <- predict(radial.svm, type="prob", newdata = numerical_2020, probability = TRUE)
+
+radial.svm.prob.rocr <- prediction(attr(radial.svm.prob, "probabilities")[,1], numerical_2020$Outcome)
+radial.svm.perf <- performance(radial.svm.prob.rocr, "tpr","fpr")
+
+#Lasso Regression
+library(glmnet)
+x <- model.matrix(Outcome ~ ., numerical_2016)[,-1]
+y <- numerical_2016$Outcome
+x.validation <- model.matrix(Outcome ~ ., numerical_2020)[,-1]
+y.validation <- numerical_2020$Outcome
+grid <- 10^seq(10, -2, length = 100)
+
+lasso.mod <- glmnet(x, y, alpha = 1,
+                    lambda = grid, family = "binomial")
+
+plot(lasso.mod, label = TRUE)
+set.seed(1)
+cv.out <- cv.glmnet(x, as.factor(y), alpha = 1, family = "binomial")
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+lasso.pred <- predict(lasso.mod, s = bestlam,
+                      newx = x.validation, family = "binomial")
+
+
+
+
+#ROC curves of different models
+plot(poly.svm.perf, col = 1, main="ROC curves of different SVMs on validation set")
+plot(radial.svm.perf,col = 2,  add = TRUE)
+legend(0.6, 0.6, c('Polynomial', 'Radial'), 1:2)
